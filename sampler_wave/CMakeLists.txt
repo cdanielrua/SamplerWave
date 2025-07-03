@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(sampler_wave sintetizador.c)
+add_executable(sampler_wave integrado_final.c)
 
 pico_generate_pio_header(sampler_wave ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
