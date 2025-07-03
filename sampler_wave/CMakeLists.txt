@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(sampler_wave main.c)
+add_executable(sampler_wave sintetizador.c)
 
 pico_generate_pio_header(sampler_wave ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio)
 
@@ -48,7 +48,7 @@ pico_enable_stdio_usb(sampler_wave 1)
 
 # Add the standard library to the build
 target_link_libraries(sampler_wave
-        pico_stdlib hardware_pwm hardware_dma hardware_adc hardware_irq hardware_pio pico_sync m)
+        pico_stdlib hardware_pwm hardware_dma hardware_adc hardware_irq hardware_pio pico_sync m hardware_clocks)
 
 # Add the standard include files to the build
 target_include_directories(sampler_wave PRIVATE
