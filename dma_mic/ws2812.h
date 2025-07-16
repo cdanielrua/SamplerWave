@@ -6,22 +6,22 @@
 #include "ws2812.pio.h"
 
 
-#define RED     0x190000  // (255*0.1, 0, 0)
-#define GREEN   0x001900  // (0, 255*0.1, 0)
-#define BLUE    0x000019  // (0, 0, 255*0.1)
-#define WHITE   0x191919  // (255*0.1, 255*0.1, 255*0.1)
+#define RED     0x800000  // (255*0.5, 0, 0)
+#define GREEN   0x008000  // (0, 255*0.5, 0)
+#define BLUE    0x000080  // (0, 0, 255*0.5)
+#define WHITE   0x808080  // (255*0.5, 255*0.5, 255*0.5)
 #define BLACK   0x000000  // (0, 0, 0)
-#define YELLOW  0x191900  // (255*0.1, 255*0.1, 0)
-#define CYAN    0x001919  // (0, 255*0.1, 255*0.1)
+#define YELLOW  0x808000  // (255*0.5, 255*0.5, 0)
 // Todos los colores corregidos para formato GRB (WS2812)
-#define MAGENTA 0x001919  // G=0, R=0x19, B=0x19 (magenta: rojo+azul)
-#define ORANGE  0x161900  // G=0x16, R=0x19, B=0   (naranja: rojo+verde)
-#define PURPLE  0x000808  // G=0, R=0x08, B=0x08  (púrpura: rojo+azul)
-#define PINK    0x13190C  // G=0x13, R=0x19, B=0x0C (rosa: rojo+verde+azul)
-#define BROWN   0x020A02  // G=0x02, R=0x0A, B=0x02 (marrón: rojo+verde+azul)
+#define CYAN    0x008080  // (0, 255*0.5, 255*0.5)
+#define MAGENTA 0x800080  // G=0, R=0x80, B=0x80 (magenta: rojo+azul)
+#define ORANGE  0x408000  // G=0x40, R=0x80, B=0   (naranja: rojo+verde)
+#define PURPLE  0x000040  // G=0, R=0x00, B=0x40  (púrpura: rojo+azul)
+#define PINK    0x608040  // G=0x60, R=0x80, B=0x40 (rosa: rojo+verde+azul)
+#define BROWN   0x102810  // G=0x10, R=0x28, B=0x10 (marrón: rojo+verde+azul)
 
 
-#define NUM_PIXELS 16
+#define NUM_PIXELS 24
 #define WS2812_PIN 2
 
 PIO pio;
@@ -47,31 +47,45 @@ static inline void ws2812_show() {
 }
 
 
-void led_mix(uint8_t pattern_idx,uint8_t beat_idx,uint16_t *patterns) {
-   
-   for(uint8_t i = 0; i < NUM_PIXELS; ++i) {
-        if(i == beat_idx) set_pixel_color(i, WHITE); // Highlight the current beat
-        else if (patterns[pattern_idx] & (1 << i)) {
-            switch (pattern_idx)
-            {
-            case 0:
-                set_pixel_color(i, RED); // Kick pattern
-                break;
-            case 1:
-                set_pixel_color(i, GREEN); // Snare pattern
-                break;
-            case 2:
-                set_pixel_color(i, BLUE); // Hi-hat pattern
+void led_mix(uint8_t pattern_idx, uint8_t beat_idx, uint16_t *patterns, uint8_t slice) {
+    uint8_t slice_start = slice;
+    uint8_t slice_end = slice + 8;
+    uint32_t slice_soft_color = CYAN; // Gris suave
 
-            default:
-                break;
-            } 
-        } else {
-            set_pixel_color(i, BLACK); // Inactive beat
+    // LEDs 0-15: pattern y beat
+    for (uint8_t i = 8; i < 25; ++i) {
+        if (i == beat_idx) {
+            set_pixel_color(i, YELLOW); // Prioridad máxima: beat
         }
-    
+        else if (patterns[pattern_idx] & (1 << i)) {
+            switch (pattern_idx) {
+                case 0: set_pixel_color(i, RED); break;
+                case 1: set_pixel_color(i, GREEN); break;
+                case 2: set_pixel_color(i, BLUE); break;
+                default: break;
+            }
+        }
+        else if (i >= slice_start && i < slice_end) {
+            set_pixel_color(i, slice_soft_color); // Prioridad baja: slice activo
+        }
+        else {
+            set_pixel_color(i, BLACK); // Inactivo
+        }
     }
 
+    // LEDs 16-23: color del pattern actual
+    
+    
+    for (uint8_t i = 16; i < 25; ++i) {
+        switch (pattern_idx) {
+            case 0: set_pixel_color(i, RED); break;
+            case 1: set_pixel_color(i, GREEN); break;
+            case 2: set_pixel_color(i, BLUE); break;
+            default: break;
+        
+        }
+        
+    }
 }
 
 

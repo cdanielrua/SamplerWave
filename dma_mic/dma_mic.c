@@ -11,7 +11,7 @@
 #include "sampler.h"
 #include "ws2812.h"
 
-
+#define POT_PIN 27 // GPIO pin for the potentiometer input
 #define MIC_PIN 26 // GPIO pin for the microphone input
 #define PWM_PIN 15 // GPIO pin for the PWM output
 #define BUTTON_PIN 0 // GPIO pin for the button input
@@ -26,25 +26,18 @@ void update_tempo(uint32_t new_bpm);
 void fill_and_mix_buffer(uint16_t *buffer_ptr, size_t num_samples_to_fill);
 SamplePlayer players[3];
 #define NUM_SOUNDS         3 
+volatile bool adc_ready = false;
 volatile bool dma = false;
 volatile int dma_chan = 0;
 volatile int trigger_channel = 0;
 volatile uint8_t button_num = 0;
+volatile uint8_t pattern_slice = 0;
 void dma_handler() {
     // Clear the DMA interrupt
     dma_hw->ints0 = 1u << 0; // Clear the interrupt for channel 0
    // dma_channel_set_trans_count(dma_chan, 2400, false); // Reset the transfer count
   //  dma_channel_set_read_addr(dma_chan,audio_data , true);
    dma = true; // Set the flag to indicate DMA transfer is complete
-   if(current_buffer_is_upper_half){
-        dma_channel_set_read_addr(dma_chan,sampler_buffer,false);
-        fill_and_mix_buffer(sampler_buffer + HALF_BUFFER_SIZE,HALF_BUFFER_SIZE);
-   }else{
-        dma_channel_set_read_addr(dma_chan,sampler_buffer + HALF_BUFFER_SIZE,false);
-        fill_and_mix_buffer(sampler_buffer,HALF_BUFFER_SIZE);
-   }
-   current_buffer_is_upper_half = !current_buffer_is_upper_half;
-   dma_channel_set_trans_count(dma_chan, HALF_BUFFER_SIZE, true);
 
 }
 
@@ -79,13 +72,16 @@ void dma_trigger(uint freq){
 }
 volatile uint8_t idx = 0;
 int64_t update(alarm_id_t id, void *user_data) {
-    led_mix(idx, beat_index, patterns);
-    return 20000; // Retornar el tiempo para la próxima llamada
+    led_mix(idx, beat_index, patterns,pattern_slice);
+     
+   
+    return 10000; // Retornar el tiempo para la próxima llamada
 }
 
 int64_t my_alarm_callback(alarm_id_t id, void *user_data) {
     adc_hw->cs |= ADC_CS_START_ONCE_BITS;
-    return 1000000 / SAMPLE_RATE;
+    adc_ready = true; // Set the flag to indicate ADC is ready
+    return 250000;
 }
 
 bool button_pressed = false;
@@ -107,11 +103,11 @@ void button_handler(uint gpio, uint32_t events) {
 /// @param pin_start Pin de inicio para los botones (0-7).
 void button_init(uint8_t pin_start){
 
-    gpio_init_mask(0x1FF << pin_start);
-    gpio_set_dir_in_masked(0x1FF << pin_start); // Set the button pin as input
+    gpio_init_mask(0x3FF << pin_start);
+    gpio_set_dir_in_masked(0x3FF << pin_start); // Set the button pin as input
    
     
-    for(uint8_t i = pin_start; i < pin_start + 9; i++) {
+    for(uint8_t i = pin_start; i < pin_start + 10; i++) {
         gpio_pull_up(i); // Enable pull-up resistor on each button pin
        gpio_set_irq_enabled_with_callback(i, GPIO_IRQ_EDGE_FALL, true, &button_handler);
     }
@@ -131,15 +127,9 @@ int main()
     ws2812_init(16);
     button_init(BUTTON_PIN);
     adc_init();
-    adc_gpio_init(MIC_PIN); // Initialize the GPIO pin for the microphone
-    adc_select_input(0); // Select ADC input 0 (GPIO 26)
-    adc_set_clkdiv(1.0f); // Set ADC clock divider to 1.0 (default)
-    adc_fifo_setup(true, // Enable the FIFO
-                    1, // Don't enable the DMA
-                    1, 
-                    false, 
-                    false); // Right shift the result to 8 bits  
-   // Initialize PWM with the desired sample rate   
+    adc_gpio_init(POT_PIN); // Initialize the GPIO pin for the microphone
+    adc_select_input(1); // Select ADC input 0 (GPIO 26)
+    adc_set_clkdiv(80.0f); // Set ADC clock divider to 1.0 (default)
    
    
    players[0] = (SamplePlayer){.data = kick_data, .length = KICK_SIZE, .position = 0, .active = false};
@@ -154,10 +144,10 @@ int main()
     pwm_sample_rate_init(SAMPLE_RATE);
     dma_chan = dma_claim_unused_channel(true); 
     play_samples_pwm_dma(); // Initialize the DMA transfer for PWM output
-   
+    add_alarm_in_us(200000, my_alarm_callback, NULL, true); // Set up the alarm for the sample rate
     dma_channel_start(dma_chan); // Start the DMA channel
     
-  
+    
 
     while (true) {
 
@@ -169,20 +159,49 @@ int main()
             idx = (idx + 1) % 3;
             printf("Pattern: %d\n", idx);
            }
+           else if (button_num == 9){
+            pattern_slice = (pattern_slice + 8) % 16;
+            printf("Pattern slice: %d\n", pattern_slice);
+           }
            else{
-             patterns[idx] ^= (1 << button_num); 
+            
+             patterns[idx] ^= (1 << (button_num+pattern_slice)); 
            }
            
-           print_bin(patterns[idx]);
+           //print_bin(patterns[idx]);
             
         }
         if(dma) {
             dma = false; // Reset the DMA flag
-            
+            if(current_buffer_is_upper_half){
+            dma_channel_set_read_addr(dma_chan,sampler_buffer,false);
+            fill_and_mix_buffer(sampler_buffer + HALF_BUFFER_SIZE,HALF_BUFFER_SIZE);
+            }else{
+            dma_channel_set_read_addr(dma_chan,sampler_buffer + HALF_BUFFER_SIZE,false);
+            fill_and_mix_buffer(sampler_buffer,HALF_BUFFER_SIZE);
+            }
+            current_buffer_is_upper_half = !current_buffer_is_upper_half;
+            dma_channel_set_trans_count(dma_chan, HALF_BUFFER_SIZE, true);
             
            // play_samples_pwm_dma(buffer, SAMPLES, SAMPLE_RATE);
         }
+        
+          
+        if (adc_ready) {
+            adc_ready = false; // Reset the ADC ready flag
+            uint16_t adc_value = adc_read();
+            uint new_bpm = 60 + (adc_value * 160 / 4095); // Read the ADC value from the microphone
+            if (abs((int)current_bpm - (int)new_bpm) > 2) { // Solo si la diferencia es mayor a 1
+                update_tempo(new_bpm); // Update the current BPM
+                printf("BPM updated to: %d\n", new_bpm);
+            }
+        }
+            
+            
+        
+        
         tight_loop_contents(); // Keep the CPU busy
+    
     }
 }
 
@@ -259,7 +278,7 @@ void fill_and_mix_buffer(uint16_t *buffer_ptr, size_t num_samples_to_fill) {
             
             uint16_t current_step_bit_mask = (1u <<(15 - pattern_index) );
             beat_index = 15 - pattern_index ;
-            printf("beat_index %d\n",beat_index); // Actualizar el índice del beat actual
+           // printf("beat_index %d\n",beat_index); // Actualizar el índice del beat actual
             if (patterns[0] & current_step_bit_mask) { // Si el bit correspondiente en pattern_kick es '1'
                 players[0].active = true;
                 players[0].position = 0;
@@ -305,14 +324,10 @@ void update_tempo(uint32_t new_bpm) {
 
     current_bpm = new_bpm;
 
-    float samples_per_beat = ((float)SAMPLE_RATE * 60.0f) / (float)current_bpm;
-  
-    pattern_samples_per_step = (size_t)(samples_per_beat / (float)pattern_samples_per_step);
+    // Calcula cuántas muestras corresponden a cada paso del patrón (16 pasos por compás)
+    float beats_per_step = 1.0f / 4.0f;
+    float samples_per_step = ((float)SAMPLE_RATE * 60.0f * beats_per_step) / (float)current_bpm;
 
-    if (pattern_samples_per_step == 0) {
-        pattern_samples_per_step = 1;
-    }
-
-
-    printf("New BPM: %lu, Samples per Step: %zu\n", current_bpm, pattern_samples_per_step);
+    pattern_samples_per_step = (size_t)samples_per_step;
+    if (pattern_samples_per_step == 0) pattern_samples_per_step = 1;
 }

@@ -13,9 +13,9 @@ uint16_t patterns[3]= {
 };
 volatile uint8_t beat_index = 0; // Current beat index    
 volatile uint8_t pattern_index = 0;
-volatile uint16_t pattern_samples_per_step = 4;
+volatile uint16_t pattern_samples_per_step = 1;
 uint16_t sampler_buffer[BUFFER_SIZE];
-uint16_t current_bpm = 115; // Beats per minute
+volatile uint16_t current_bpm = 60; // Beats per minute
 
 typedef struct{
     const uint16_t *data;
