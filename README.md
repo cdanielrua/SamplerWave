@@ -48,9 +48,9 @@ El dispositivo permite reproducir y combinar múltiples sonidos (samples) para g
 
 ### Interacción y Control
 
-- **RF4:** Los botones físicos deben asignarse a la activación de sonidos específicos y responder en menos de 100 ms.
-- **RF5:** Un potenciómetro o perilla permitirá al usuario ajustar el tempo (BPM) de la secuencia en tiempo real.
-- **RF6:** El sistema debe permitir tanto la ejecución en vivo de sonidos como la reproducción de secuencias pre-programadas.
+- **RF4:** Los botones físicos deben asignarse a la activación de sonidos específicos y responder rapidamente.
+- **RF5:** Un potenciómetro o perilla permitirá al usuario ajustar el tempo (BPM) de la secuencia en tiempo de ejecución.
+- **RF6:** El sistema debe permitir tanto la ejecución en vivo de sonidos.
 
 ### Interfaz de Usuario
 
@@ -59,20 +59,20 @@ El dispositivo permite reproducir y combinar múltiples sonidos (samples) para g
 
 ### Gestión del Almacenamiento
 
-- **RF9:** El sistema debe cargar los sonidos desde la memoria interna; en fases posteriores, se integrará la opción de usar una microSD.
-- **RF10:** Se debe utilizar un formato de sonido sin compresión para evitar sobrecarga en la decodificación en tiempo real.
+- **RF9:** El sistema debe cargar los sonidos desde un archivo .h.
+- **RF10:** Se debe utilizar un formato de array de elementos de 12 bits que representan las muestras del sonido.
 
 ---
 
 ## Requisitos No Funcionales (RNF)
 
-- **RNF1:** El sistema deberá reproducir sonidos y responder a la activación de botones en menos de 100 ms.
+- **RNF1:** El sistema deberá reproducir sonidos y responder a la activación de botones.
 - **RNF2:** La secuenciación debe mantenerse estable y precisa con el tempo establecido.
-- **RNF3:** El consumo total del sistema y sus periféricos no deberá superar los 5 vatios, optimizando el uso de energía.
+- **RNF3:** El consumo total del sistema y sus periféricos no deberá superar la capacidad maxima sin usar baterias externas, solamente alimentado por USB.
 - **RNF4:** La arquitectura del sistema debe ser modular y bien documentada para facilitar futuras ampliaciones o actualizaciones.
 - **RNF5:** El diseño debe permitir la integración de nuevos módulos (botones, perillas, LEDs, pantallas, etc.) sin reestructuraciones mayores.
 - **RNF6:** El sistema debe operar de forma continua y estable sin reinicios inesperados durante sesiones de uso o demostraciones.
-- **RNF7:** Los métodos de comunicación deben cumplir con los estándares de la industria para facilitar la integración con otros dispositivos (por ejemplo, conexiones MIDI).
+- **RNF7:** Los métodos de comunicación como la salida de audio deben ser accesibles por dispositivos comerciales(por ejemplo, conexión de un parlante por la salida de un jack de audio).
 
 ---
 
@@ -85,28 +85,28 @@ El dispositivo permite reproducir y combinar múltiples sonidos (samples) para g
 ### Pruebas de Funcionalidad
 
 1. **Carga y Reproducción de Samples:**  
-   - *Procedimiento:* Pre-cargar varios sonidos en la memoria interna.  
-   - *Criterio de aceptación:* Al presionar el botón asignado, el sample debe reproducirse en menos de 100 ms.
+   - *Procedimiento:* Pre-cargar varios sonidos en arreglos en archivos .h.  
+   - *Criterio de aceptación:* Al presionar el botón asignado, el sample debe reproducirse rapidamente.
 
 2. **Secuenciación de Audio:**  
    - *Procedimiento:* Configurar una secuencia (16 pasos x 4 canales) y verificar el avance mediante LEDs que marquen el paso actual.  
-   - *Criterio de aceptación:* La secuencia debe mantenerse sincronizada con el tempo configurado (verificado con un instrumento de medición).
+   - *Criterio de aceptación:* La secuencia debe mantenerse sincronizada con el tempo configurado.
 
 3. **Control de Tempo:**  
    - *Procedimiento:* Ajustar el BPM usando el potenciómetro mientras la secuencia está en ejecución.  
-   - *Criterio de aceptación:* El sistema debe ajustar el tempo en tiempo real sin interrupciones.
+   - *Criterio de aceptación:* El sistema debe ajustar el tempo en tiempo de ejecución sin que se interrumpa.
 
 4. **Interfaz de Usuario:**  
    - *Procedimiento:* Verificar que los LEDs respondan de forma clara a la activación de sonidos y al avance de la secuencia.  
-   - *Criterio de aceptación:* La interfaz visual debe ser inmediatamente comprensible.
+   - *Criterio de aceptación:* La interfaz visual debe ser comprensible por el usuario.
 
 5. **Pruebas de Integración:**  
    - *Procedimiento:* Ejecutar la secuencia completa combinando la activación manual de botones, la lectura del potenciómetro y la reproducción de audio de forma concurrente.  
    - *Criterio de aceptación:* Todos los módulos deben funcionar integradamente sin latencia o fallos perceptibles.
 
 6. **Pruebas de Fiabilidad y Consumo Energético:**  
-   - *Procedimiento:* Someter el sistema a una prueba de funcionamiento continuo durante varias horas y medir el consumo energético.  
-   - *Criterio de aceptación:* El sistema se mantiene estable sin reinicios y el consumo es inferior a 5 vatios.
+   - *Procedimiento:* Someter el sistema a una prueba de funcionamiento continuo durante un periodo de tiempo considerable.  
+   - *Criterio de aceptación:* El sistema se mantiene estable sin reinicios y sin generación de sobrecalentamiento por consumo excesivo de potencia.
 
 ---
 
