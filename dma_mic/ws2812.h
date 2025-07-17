@@ -28,9 +28,11 @@ PIO pio;
 uint sm;
 uint offset;
 uint32_t pixels[NUM_PIXELS] = {0};
+
+// Function prototype for urgb_u32
+static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b);
+
 static inline void set_pixel_color(uint32_t pixel_index, uint32_t pixel_grb) {
- 
-    
     if (pixel_index < NUM_PIXELS) {
         pixels[pixel_index] = pixel_grb;
     }
@@ -48,46 +50,47 @@ static inline void ws2812_show() {
 
 
 void led_mix(uint8_t pattern_idx, uint8_t beat_idx, uint16_t *patterns, uint8_t slice) {
-    uint8_t slice_start = slice;
-    uint8_t slice_end = slice + 8;
-    uint32_t slice_soft_color = CYAN; // Gris suave
+    // Configuración de colores por pattern
+    uint32_t pattern_colors[] = {0x6b1111, 0x116b13, 0x11276b};
+    uint32_t pattern_colors_16[] = {0x150303, 0x031503, 0x030815};
+    uint32_t beat_color = urgb_u32(51, 51, 25);
+    uint32_t inactive_color = BLACK;
+    uint32_t slice_color = urgb_u32(5, 5, 0); // Color suave para slice
 
-    // LEDs 0-15: pattern y beat
-    for (uint8_t i = 8; i < 25; ++i) {
-        if (i == beat_idx) {
-            set_pixel_color(i, YELLOW); // Prioridad máxima: beat
-        }
-        else if (patterns[pattern_idx] & (1 << i)) {
-            switch (pattern_idx) {
-                case 0: set_pixel_color(i, RED); break;
-                case 1: set_pixel_color(i, GREEN); break;
-                case 2: set_pixel_color(i, BLUE); break;
-                default: break;
-            }
-        }
-        else if (i >= slice_start && i < slice_end) {
-            set_pixel_color(i, slice_soft_color); // Prioridad baja: slice activo
-        }
-        else {
-            set_pixel_color(i, BLACK); // Inactivo
+    // LEDs 0-7: mostrar pattern del slice seleccionado, en orden inverso
+    uint8_t slice_offset = (slice == 0) ? 0 : 8;
+    for (uint8_t i = 0; i < 8; ++i) {
+        uint8_t pattern_bit = 7 - i;
+        if (patterns[pattern_idx] & (1 << (slice_offset + pattern_bit))) {
+            set_pixel_color(i, pattern_colors[pattern_idx]);
+        } else {
+            set_pixel_color(i, inactive_color);
         }
     }
 
-    // LEDs 16-23: color del pattern actual
-    
-    
-    for (uint8_t i = 16; i < 25; ++i) {
-        switch (pattern_idx) {
-            case 0: set_pixel_color(i, RED); break;
-            case 1: set_pixel_color(i, GREEN); break;
-            case 2: set_pixel_color(i, BLUE); break;
-            default: break;
-        
+    // LEDs 8-23: mostrar índice de beat con prioridad, luego pattern, luego slice
+    for (uint8_t i = 8; i < 24; ++i) {
+        if (i == beat_idx) {
+            set_pixel_color(i, beat_color);
+        } else if (patterns[pattern_idx] & (1 << (i - 8))) {
+            set_pixel_color(i, pattern_colors_16[pattern_idx]);
+        } else if ((slice == 0 && i < 16) || (slice == 8 && i >= 16)) {
+            set_pixel_color(i, slice_color);
+        } else {
+            set_pixel_color(i, inactive_color);
         }
-        
     }
 }
 
+
+uint32_t rgb_to_grb(uint32_t rgb_color) {
+    uint8_t r = (rgb_color >> 16) & 0xFF;
+    uint8_t g = (rgb_color >> 8) & 0xFF;
+    uint8_t b = rgb_color & 0xFF;
+
+    uint32_t grb_color = (g << 16) | (r << 8) | b;
+    return grb_color;
+}
 
 
 static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {

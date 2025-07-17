@@ -10,6 +10,7 @@
 #include "audio_table.h"
 #include "sampler.h"
 #include "ws2812.h"
+#include "pico/multicore.h"
 
 #define POT_PIN 27 // GPIO pin for the potentiometer input
 #define MIC_PIN 26 // GPIO pin for the microphone input
@@ -32,11 +33,11 @@ volatile int dma_chan = 0;
 volatile int trigger_channel = 0;
 volatile uint8_t button_num = 0;
 volatile uint8_t pattern_slice = 0;
+volatile bool current_buffer_is_upper_half = false;
 void dma_handler() {
     // Clear the DMA interrupt
     dma_hw->ints0 = 1u << 0; // Clear the interrupt for channel 0
-   // dma_channel_set_trans_count(dma_chan, 2400, false); // Reset the transfer count
-  //  dma_channel_set_read_addr(dma_chan,audio_data , true);
+    
    dma = true; // Set the flag to indicate DMA transfer is complete
 
 }
@@ -72,21 +73,21 @@ void dma_trigger(uint freq){
 }
 volatile uint8_t idx = 0;
 int64_t update(alarm_id_t id, void *user_data) {
-    led_mix(idx, beat_index, patterns,pattern_slice);
-     
+    
+
    
-    return 10000; // Retornar el tiempo para la próxima llamada
+    return 100000; // Retornar el tiempo para la próxima llamada
 }
 
 int64_t my_alarm_callback(alarm_id_t id, void *user_data) {
-    adc_hw->cs |= ADC_CS_START_ONCE_BITS;
+   
     adc_ready = true; // Set the flag to indicate ADC is ready
     return 250000;
 }
 
 bool button_pressed = false;
 volatile uint32_t last_button_time = 0;
-const uint32_t debounce_ms = 300;
+const uint32_t debounce_ms = 200;
 
 void button_handler(uint gpio, uint32_t events) {
     uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -108,6 +109,7 @@ void button_init(uint8_t pin_start){
    
     
     for(uint8_t i = pin_start; i < pin_start + 10; i++) {
+        gpio_set_input_hysteresis_enabled(i,true);
         gpio_pull_up(i); // Enable pull-up resistor on each button pin
        gpio_set_irq_enabled_with_callback(i, GPIO_IRQ_EDGE_FALL, true, &button_handler);
     }
@@ -121,17 +123,48 @@ void print_bin(uint16_t value) {
     printf("\n");
 }
 
+void core1_main() {
+    uint64_t last_led_mix_time = time_us_64();
+    uint64_t last_other_task_time = time_us_64();
+
+    while (true) {
+        
+
+        uint64_t now = time_us_64();
+
+        if (now - last_led_mix_time >= 30000) {  // 100 ms
+            led_mix(idx, beat_index + 8, patterns, pattern_slice);
+            last_led_mix_time = now;
+        }
+
+        if (now - last_other_task_time >= 250000) {  // 250 ms
+                adc_hw->cs |= ADC_CS_START_ONCE_BITS;
+                
+                uint16_t adc_value = adc_read();
+                uint new_bpm = 60 + (adc_value * 160 / 4095); // Read the ADC value from the microphone
+                if (abs((int)current_bpm - (int)new_bpm) > 1) { // Solo si la diferencia es mayor a 1
+                    update_tempo(new_bpm); // Update the current BPM
+                    printf("BPM updated to: %d\n", new_bpm);
+                }
+            
+            last_other_task_time = now;
+        }
+        
+    }
+}
+
 int main()
 {
     stdio_init_all();
+   
     ws2812_init(16);
     button_init(BUTTON_PIN);
     adc_init();
     adc_gpio_init(POT_PIN); // Initialize the GPIO pin for the microphone
     adc_select_input(1); // Select ADC input 0 (GPIO 26)
-    adc_set_clkdiv(80.0f); // Set ADC clock divider to 1.0 (default)
-   
-   
+    // Set ADC clock divider to 1.0 (default)
+    irq_set_priority(DMA_IRQ_0,0);
+    multicore_launch_core1(core1_main);
    players[0] = (SamplePlayer){.data = kick_data, .length = KICK_SIZE, .position = 0, .active = false};
    players[1] = (SamplePlayer){.data = snare_data, .length = SNARE_SIZE, .position = 0, .active = false};
    players[2] = (SamplePlayer){.data = hihat_data, .length = HIHAT_SIZE, .position = 0, .active = false};
@@ -140,16 +173,31 @@ int main()
 
 
     sleep_ms(2000); 
-    add_alarm_in_us(250000, update, NULL, true);
+   // add_alarm_in_us(250000, update, NULL, true);
     pwm_sample_rate_init(SAMPLE_RATE);
     dma_chan = dma_claim_unused_channel(true); 
     play_samples_pwm_dma(); // Initialize the DMA transfer for PWM output
-    add_alarm_in_us(200000, my_alarm_callback, NULL, true); // Set up the alarm for the sample rate
+   // add_alarm_in_us(200000, my_alarm_callback, NULL, true); // Set up the alarm for the sample rate
     dma_channel_start(dma_chan); // Start the DMA channel
-    
+    clock_handle_t sys_clk;
+    printf("Sys clk %d",clock_get_hz(sys_clk));
     
 
     while (true) {
+
+        if (dma) {
+            dma = false;
+            if (current_buffer_is_upper_half) {
+                dma_channel_set_read_addr(dma_chan, sampler_buffer, false);
+                fill_and_mix_buffer(sampler_buffer + HALF_BUFFER_SIZE, HALF_BUFFER_SIZE);
+            } else {
+                dma_channel_set_read_addr(dma_chan, sampler_buffer + HALF_BUFFER_SIZE, false);
+                fill_and_mix_buffer(sampler_buffer, HALF_BUFFER_SIZE);
+            }
+            current_buffer_is_upper_half = !current_buffer_is_upper_half;
+            dma_channel_set_trans_count(dma_chan, HALF_BUFFER_SIZE, true);
+            
+        }
 
 
         if (button_pressed) {
@@ -171,31 +219,10 @@ int main()
            //print_bin(patterns[idx]);
             
         }
-        if(dma) {
-            dma = false; // Reset the DMA flag
-            if(current_buffer_is_upper_half){
-            dma_channel_set_read_addr(dma_chan,sampler_buffer,false);
-            fill_and_mix_buffer(sampler_buffer + HALF_BUFFER_SIZE,HALF_BUFFER_SIZE);
-            }else{
-            dma_channel_set_read_addr(dma_chan,sampler_buffer + HALF_BUFFER_SIZE,false);
-            fill_and_mix_buffer(sampler_buffer,HALF_BUFFER_SIZE);
-            }
-            current_buffer_is_upper_half = !current_buffer_is_upper_half;
-            dma_channel_set_trans_count(dma_chan, HALF_BUFFER_SIZE, true);
-            
-           // play_samples_pwm_dma(buffer, SAMPLES, SAMPLE_RATE);
-        }
+        
         
           
-        if (adc_ready) {
-            adc_ready = false; // Reset the ADC ready flag
-            uint16_t adc_value = adc_read();
-            uint new_bpm = 60 + (adc_value * 160 / 4095); // Read the ADC value from the microphone
-            if (abs((int)current_bpm - (int)new_bpm) > 2) { // Solo si la diferencia es mayor a 1
-                update_tempo(new_bpm); // Update the current BPM
-                printf("BPM updated to: %d\n", new_bpm);
-            }
-        }
+       
             
             
         
@@ -214,7 +241,7 @@ void pwm_sample_rate_init(uint32_t sample_rate){
     gpio_set_function(PWM_PIN, GPIO_FUNC_PWM);
     uint slice_num = pwm_gpio_to_slice_num(PWM_PIN);
     uint32_t sys_clk = clock_get_hz(clk_sys); 
-    uint16_t wrap = 4000; 
+    uint16_t wrap = 4095; 
     float clkdiv = (float)sys_clk / (sample_rate * (wrap + 1));
     pwm_set_wrap(slice_num, wrap);
     pwm_set_clkdiv(slice_num, clkdiv);
@@ -258,66 +285,65 @@ void play_samples_pwm_dma() {
 
 void fill_and_mix_buffer(uint16_t *buffer_ptr, size_t num_samples_to_fill) {
     static size_t samples_since_last_pattern_step = 0;
+    static uint8_t local_pattern_index = 0;
+    static uint8_t local_beat_index = 0;
+
+    // Local pointers for faster access
+    SamplePlayer *p0 = &players[0];
+    SamplePlayer *p1 = &players[1];
+    SamplePlayer *p2 = &players[2];
+    uint16_t *pat = patterns;
 
     for (size_t i = 0; i < num_samples_to_fill; ++i) {
         int32_t mixed_sample_value = 0;
-        int active_samples_count = 0;
+        uint8_t active_samples_count = 0;
 
-        // --- Lógica de Patrón y Tempo ---
-        samples_since_last_pattern_step++;
+        if (++samples_since_last_pattern_step >= pattern_samples_per_step) {
+            samples_since_last_pattern_step = 0;
+            local_pattern_index = (local_pattern_index + 1) & 0x0F;
+            local_beat_index = local_pattern_index;
+            uint16_t mask = (1u << local_pattern_index);
 
-        if (samples_since_last_pattern_step >= pattern_samples_per_step) {
-            samples_since_last_pattern_step = 0; // Reiniciar el contador para el nuevo paso
-
-            pattern_index++; // Avanzamos al siguiente paso del patrón global
-
-            if (pattern_index >= 16) { // Si hemos completado un ciclo de 16 pasos
-                pattern_index = 0; // Reiniciar el índice para repetir el patrón
-            }
-
-            
-            uint16_t current_step_bit_mask = (1u <<(15 - pattern_index) );
-            beat_index = 15 - pattern_index ;
-           // printf("beat_index %d\n",beat_index); // Actualizar el índice del beat actual
-            if (patterns[0] & current_step_bit_mask) { // Si el bit correspondiente en pattern_kick es '1'
-                players[0].active = true;
-                players[0].position = 0;
-            }
-
-            if (patterns[1] & current_step_bit_mask) { // Si el bit correspondiente en pattern_snare es '1'
-                players[1].active = true;
-                players[1].position = 0;
-            }
-
-            if (patterns[2] & current_step_bit_mask) { // Si el bit correspondiente en pattern_hihat es '1'
-                players[2].active = true;
-                players[2].position = 0;
-            }
-
+            if (pat[0] & mask) { p0->active = true; p0->position = 0; }
+            if (pat[1] & mask) { p1->active = true; p1->position = 0; }
+            if (pat[2] & mask) { p2->active = true; p2->position = 0; }
         }
-     
-        for (uint8_t s = 0; s < NUM_SOUNDS; ++s) {
-            if (players[s].active) {
-                if (players[s].position >= players[s].length) {
-                    players[s].active = false;
-                } else {
-                    mixed_sample_value += players[s].data[players[s].position];
-                    players[s].position++;
-                    active_samples_count++;
-                }
-            }
+
+        // Unroll mixing loop for 3 players
+        if (p0->active && p0->position < p0->length) {
+            mixed_sample_value += p0->data[p0->position++];
+            active_samples_count++;
+        } else if (p0->active) {
+            p0->active = false;
         }
-        // ... (normalización y escritura en buffer_ptr[i])
-        uint16_t final_output;
-        if (active_samples_count > 0) {
-            final_output = (uint16_t)(mixed_sample_value / active_samples_count);
-            if (final_output > 4095) final_output = 4095;
+        if (p1->active && p1->position < p1->length) {
+            mixed_sample_value += p1->data[p1->position++];
+            active_samples_count++;
+        } else if (p1->active) {
+            p1->active = false;
+        }
+        if (p2->active && p2->position < p2->length) {
+            mixed_sample_value += p2->data[p2->position++];
+            active_samples_count++;
+        } else if (p2->active) {
+            p2->active = false;
+        }
+
+        // Fast clipping and normalization
+        if (active_samples_count) {
+            int32_t out = mixed_sample_value / active_samples_count;
+            if (out > 4000) out = 4000;
+            else if (out < 0) out = 0;
+            buffer_ptr[i] = (uint16_t)out;
         } else {
-            final_output = 4095 / 2;
+            buffer_ptr[i] = 2048;
         }
-        buffer_ptr[i] = final_output;
     }
+    pattern_index = local_pattern_index;
+    beat_index = local_beat_index;
 }
+
+
 
 void update_tempo(uint32_t new_bpm) {
     if (new_bpm == 0) new_bpm = 1; // Evitar división por cero
@@ -325,7 +351,7 @@ void update_tempo(uint32_t new_bpm) {
     current_bpm = new_bpm;
 
     // Calcula cuántas muestras corresponden a cada paso del patrón (16 pasos por compás)
-    float beats_per_step = 1.0f / 4.0f;
+    float beats_per_step = 1.0f / 8.0f;
     float samples_per_step = ((float)SAMPLE_RATE * 60.0f * beats_per_step) / (float)current_bpm;
 
     pattern_samples_per_step = (size_t)samples_per_step;

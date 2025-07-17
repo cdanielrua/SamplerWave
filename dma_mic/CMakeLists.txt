@@ -58,6 +58,7 @@ target_link_libraries(dma_mic
         hardware_adc
         hardware_clocks
         hardware_sync
+        pico_multicore
         pico_stdlib)
 
 # Add the standard include files to the build
