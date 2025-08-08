@@ -4,7 +4,7 @@
  * @details Este programa implementa una caja de ritmos de 16 pasos con 3 instrumentos (kick, snare, hi-hat).
  * Utiliza PWM y DMA para la salida de audio, ADC para el control de tempo,
  * y PIO para la retroalimentación visual en una tira de LEDs WS2812.
- * @author Tu Nombre
+ * @author Daniel Rúa
  * @date 16 de Julio, 2025
  */
 
