@@ -5,6 +5,8 @@
 Sampler Wave es un **sampler/secuenciador de audio** inspirado en las clásicas drum machines (como las de Roland) utilizadas por DJs y productores musicales.  
 El dispositivo permite reproducir y combinar múltiples sonidos (samples) para generar secuencias rítmicas, y está diseñado para operar sobre un Raspberry Pi Pico (RP2040) utilizando el SDK en C. El enfoque es aprovechar al máximo las capacidades del microcontrolador con una arquitectura de hardware minimalista para mantener el coste y la complejidad bajos.
 
+[Video demostrativo:](https://youtube.com/shorts/SdKRd7XrMBQ)
+
 **Características principales:**
 
 - **Reproducción de sonidos:**  
